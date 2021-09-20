@@ -42,22 +42,6 @@ function render(element, container) {
 
 const simpleReact = { render, createElement };
 
-function performUnitOfWork(fiber) {}
-
-function workLoop(deadline) {
-	let shouldYied = false;
-	while (nextUnitOfWork && !shouldYied) {
-		// 手动设置单元渲染任务，然后通过performUnitOfWork函数来执行后续的单元渲染任务
-		// 这个函数的作用不单是执行当前的渲染任务，还能返回下个单元的渲染任务。
-		nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
-		// 如果剩下的事件不够渲染 则把控制权交还给浏览器主线程
-		shouldYied = deadline.timeRemaining() < 1;
-	}
-	requestIdleCallback(workLoop);
-}
-
-requestIdleCallback(workLoop);
-
 /** @jsx simpleReact.createElement */
 const element = (
 	<div className="simpleReact" id="container">
