@@ -37,16 +37,19 @@ function createDom(fiber) {
 
 const simpleReact = { render, createElement };
 
+// workInProgress的根节点
+let wipRoot = null;
 let nextUnitOfWork = null;
 const isProperty = (key) => key !== "children";
 
 function render(element, container) {
-	nextUnitOfWork = {
+	wipRoot = {
 		stateNode: container,
 		props: {
 			children: [element],
 		},
 	};
+	nextUnitOfWork = wipRoot;
 }
 
 function performUnitOfWork(fiber) {
@@ -54,9 +57,9 @@ function performUnitOfWork(fiber) {
 		fiber.stateNode = createDom(fiber);
 	}
 
-	if (fiber.parent) {
-		fiber.parent.stateNode.append(fiber.stateNode);
-	}
+	// if (fiber.parent) {
+	// 	fiber.parent.stateNode.append(fiber.stateNode);
+	// }
 
 	const elements = fiber.props.children;
 	let index = 0;
@@ -96,6 +99,21 @@ function performUnitOfWork(fiber) {
 	}
 }
 
+function commitRoot() {
+	commitWork(wipRoot.child);
+	wipRoot = null;
+}
+
+function commitWork(fiber) {
+	if (!fiber) {
+		return;
+	}
+	const domParent = fiber.parent.stateNode;
+	domParent.appendChild(fiber.stateNode);
+	commitWork(fiber.child);
+	commitWork(fiber.sibling);
+}
+
 function workLoop(deadline) {
 	let shouldYied = false;
 	while (nextUnitOfWork && !shouldYied) {
@@ -104,6 +122,11 @@ function workLoop(deadline) {
 		nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
 		// 如果剩下的事件不够渲染 则把控制权交还给浏览器主线程
 		shouldYied = deadline.timeRemaining() < 1;
+	}
+
+	// 完成所有渲染单位后，提交整个fiber
+	if (!nextUnitOfWork && wipRoot) {
+		commitRoot();
 	}
 	requestIdleCallback(workLoop);
 }
