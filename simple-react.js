@@ -1,7 +1,3 @@
-let nextUnitOfWork = null;
-
-const isProperty = (key) => key !== "children";
-
 function createElement(type, props, ...children) {
 	return {
 		type,
@@ -24,25 +20,81 @@ function createTextElement(text) {
 	};
 }
 
-function render(element, container) {
+function createDom(fiber) {
 	const dom =
-		element.type === "TEXT_ELEMENT"
+		fiber.type === "TEXT_ELEMENT"
 			? document.createTextNode("")
-			: document.createElement(element.type);
+			: document.createElement(fiber.type);
 
-	Object.keys(element.props)
+	Object.keys(fiber.props)
 		.filter(isProperty)
 		.forEach((name) => {
-			dom[name] = element.props[name];
+			dom[name] = fiber.props[name];
 		});
-
-	element.props.children.forEach((child) => render(child, dom));
-	container.appendChild(dom);
+	// fiber.props.children.forEach((child) => render(child, dom));
+	return dom;
 }
 
 const simpleReact = { render, createElement };
 
-function performUnitOfWork(fiber) {}
+let nextUnitOfWork = null;
+const isProperty = (key) => key !== "children";
+
+function render(element, container) {
+	nextUnitOfWork = {
+		stateNode: container,
+		props: {
+			children: [element],
+		},
+	};
+}
+
+function performUnitOfWork(fiber) {
+	if (!fiber.stateNode) {
+		fiber.stateNode = createDom(fiber);
+	}
+
+	if (fiber.parent) {
+		fiber.parent.stateNode.append(fiber.stateNode);
+	}
+
+	const elements = fiber.props.children;
+	let index = 0;
+	let prevSibling = null;
+
+	while (index < elements.length) {
+		const element = elements[index];
+
+		const newFiber = {
+			type: element.type,
+			props: element.props,
+			parent: fiber,
+			stateNode: null,
+		};
+
+		if (index === 0) {
+			fiber.child = newFiber;
+		} else {
+			prevSibling.sibling = newFiber;
+		}
+		prevSibling = newFiber;
+		index++;
+	}
+
+	// 深度优先遍历，先遍历所有的子节点，如果子节点遍历完了则开始遍历兄弟节点
+	// 如果兄弟节点也没有，则返回父节点遍历叔叔节点。。。以此类推
+	if (fiber.child) {
+		return fiber.child;
+	}
+
+	let nextFiber = fiber;
+	while (nextFiber) {
+		if (nextFiber.sibling) {
+			return nextFiber.sibling;
+		}
+		nextFiber = nextFiber.parent;
+	}
+}
 
 function workLoop(deadline) {
 	let shouldYied = false;
