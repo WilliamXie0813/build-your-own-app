@@ -40,7 +40,14 @@ const simpleReact = { render, createElement };
 // workInProgress的根节点
 let wipRoot = null;
 let nextUnitOfWork = null;
-const isProperty = (key) => key !== "children";
+// 指向页面上以渲染完成的节点
+let currentRoot = null;
+let deletions = null;
+
+const isEvent = (key) => key.startsWith("on");
+const isProperty = (key) => key !== "children" && !isEvent(key);
+const isNew = (prev, next) => (key) => prev[key] !== next[key];
+const isGone = (prev, next) => (key) => !(key in next);
 
 function render(element, container) {
 	wipRoot = {
@@ -48,7 +55,9 @@ function render(element, container) {
 		props: {
 			children: [element],
 		},
+		alternate: currentRoot,
 	};
+	deletions = [];
 	nextUnitOfWork = wipRoot;
 }
 
@@ -57,32 +66,8 @@ function performUnitOfWork(fiber) {
 		fiber.stateNode = createDom(fiber);
 	}
 
-	// if (fiber.parent) {
-	// 	fiber.parent.stateNode.append(fiber.stateNode);
-	// }
-
 	const elements = fiber.props.children;
-	let index = 0;
-	let prevSibling = null;
-
-	while (index < elements.length) {
-		const element = elements[index];
-
-		const newFiber = {
-			type: element.type,
-			props: element.props,
-			parent: fiber,
-			stateNode: null,
-		};
-
-		if (index === 0) {
-			fiber.child = newFiber;
-		} else {
-			prevSibling.sibling = newFiber;
-		}
-		prevSibling = newFiber;
-		index++;
-	}
+	reconcileChildren(fiber, elements);
 
 	// 深度优先遍历，先遍历所有的子节点，如果子节点遍历完了则开始遍历兄弟节点
 	// 如果兄弟节点也没有，则返回父节点遍历叔叔节点。。。以此类推
@@ -99,8 +84,64 @@ function performUnitOfWork(fiber) {
 	}
 }
 
+function reconcileChildren(wipFiber, elements) {
+	let index = 0;
+	let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
+	let prevSibling = null;
+
+	while (index < elements.length || oldFiber !== null) {
+		const element = elements[index];
+		const smaeType = oldFiber && element && element.type === oldFiber.type;
+		let newFiber = null;
+		//Update the node
+		if (smaeType) {
+			newFiber = {
+				type: oldFiber.type,
+				props: element.props,
+				parent: wipFiber,
+				stateNode: oldFiber.stateNode,
+				alternate: oldFiber,
+				effectTag: "UPDATE",
+			};
+		}
+
+		// Add the node
+		if (element && !smaeType) {
+			newFiber = {
+				type: element.type,
+				props: element.props,
+				parent: wipFiber,
+				stateNode: null,
+				alternate: null,
+				effectTag: "PLACEMENT",
+			};
+		}
+
+		// Delete the node
+		if (oldFiber && !smaeType) {
+			oldFiber.effectTag = "DELETION";
+			deletions.push(oldFiber);
+		}
+
+		if (oldFiber) {
+			oldFiber = oldFiber.sibling;
+		}
+
+		if (index === 0) {
+			wipFiber.child = newFiber;
+		} else {
+			prevSibling.sibling = newFiber;
+		}
+		prevSibling = newFiber;
+		index++;
+	}
+}
+
 function commitRoot() {
+	//先处理删除节点
+	deletions.forEach(commitWork);
 	commitWork(wipRoot.child);
+	currentRoot = wipRoot;
 	wipRoot = null;
 }
 
@@ -109,9 +150,53 @@ function commitWork(fiber) {
 		return;
 	}
 	const domParent = fiber.parent.stateNode;
-	domParent.appendChild(fiber.stateNode);
+
+	if (fiber.effectTag === "PLACEMENT" && fiber.stateNode != null) {
+		domParent.appendChild(fiber.stateNode);
+	} else if (fiber.effectTag === "UPDATE" && fiber.stateNode != null) {
+		updateDom(fiber.stateNode, fiber.alternate.props, fiber.props);
+	} else if (fiber.effectTag === "DELETION") {
+		domParent.removeChild(fiber.stateNode);
+	}
+
 	commitWork(fiber.child);
 	commitWork(fiber.sibling);
+}
+
+function updateDom(dom, prevProps, nextProps) {
+	// Remove old properties
+	Object.keys(prevProps)
+		.filter(isProperty)
+		.filter(isGone(prevProps, nextProps))
+		.forEach((name) => {
+			dom[name] = "";
+		});
+
+	// Remove old or changed event listeners
+	Object.keys(prevProps)
+		.filter(isEvent)
+		.filter((key) => !(key in nextProps) || isNew(prevProps, nextProps)(key))
+		.forEach((name) => {
+			const eventType = name.toLowerCase().substring(2);
+			dom.removeEventListener(eventType, prevProps[name]);
+		});
+
+	// Add old properties
+	Object.keys(nextProps)
+		.filter(isProperty)
+		.filter(isNew(prevProps, nextProps))
+		.forEach((name) => {
+			dom[name] = nextProps[name];
+		});
+
+	// Add new event listeners
+	Object.keys(nextProps)
+		.filter(isEvent)
+		.filter(isNew(prevProps, nextProps))
+		.forEach((name) => {
+			const eventType = name.toLowerCase().substring(2);
+			dom.addEventListener(eventType, nextProps[name]);
+		});
 }
 
 function workLoop(deadline) {
