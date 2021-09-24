@@ -76,6 +76,7 @@ function useState(initialState) {
 
 	const setState = (action) => {
 		hook.queue.push(action);
+		console.log("hook : ", hook);
 		wipRoot = {
 			stateNode: currentRoot.stateNode,
 			props: currentRoot.props,
@@ -89,6 +90,8 @@ function useState(initialState) {
 	hookIndex++;
 	return [hook.state, setState];
 }
+
+function useEffect(callback, initialState) {}
 
 function updateFunctionComponent(fiber) {
 	wipFiber = fiber;
@@ -124,7 +127,7 @@ function render(element, container) {
 }
 
 function performUnitOfWork(fiber) {
-	console.log("fiber : ", fiber);
+	// console.log("fiber : ", fiber);
 	if (isFunctionComponent(fiber.type)) {
 		updateFunctionComponent(fiber);
 	} else {
@@ -147,9 +150,9 @@ function performUnitOfWork(fiber) {
 }
 
 function reconcileChildren(wipFiber, elements) {
-	console.log("wipFiber : ", wipFiber);
-	console.log("elements : ", elements);
-	console.log("---------------------------------------------");
+	// console.log("wipFiber : ", wipFiber);
+	// console.log("elements : ", elements);
+	// console.log("---------------------------------------------");
 	let index = 0;
 	let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
 	let prevSibling = null;
@@ -298,19 +301,28 @@ requestIdleCallback(workLoop);
 
 /** @jsx simpleReact.createElement */
 function App(props) {
-	const [count, setCount] = useState(0);
+	const [countA, setCountA] = useState(0);
+	const [countB, setCountB] = useState(0);
 	return (
 		<h1 id="text_3">
 			<button
 				onClick={() => {
-					let newCount = count + 1;
-					setCount(newCount);
+					let newCount = countA + 1;
+					setCountA(newCount);
 				}}
 			>
-				Click Me !!!
+				Click Me Plus!!!
+			</button>
+			<button
+				onClick={() => {
+					let newCount = countB - 1;
+					setCountB(newCount);
+				}}
+			>
+				Click Me Minus!!!
 			</button>
 			<div>
-				I am {props.name}, Count: {count}
+				I am {props.name}, countA: {countA}, countB: {countB}
 			</div>
 		</h1>
 	);
